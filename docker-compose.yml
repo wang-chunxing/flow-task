@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # MySQL 数据库服务
+  db:
+    image: mysql:8.0
+    container_name: flow_task_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: flow_task  # 业务数据库
+      MYSQL_USER: user
+      MYSQL_PASSWORD: password
+      MYSQL_ROOT_HOST: '%'
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./init-scripts:/docker-entrypoint-initdb.d  # 初始化脚本目录
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "user", "-ppassword"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - flow_network
+
+  temporal:
+    container_name: flow_temporal
+    depends_on:
+      - db
+    environment:
+      - DB=mysql8
+      - DB_PORT=3306
+      - MYSQL_USER=user
+      - MYSQL_PWD=password
+      - MYSQL_SEEDS=db
+    image: temporalio/auto-setup:1.25.2
+    networks:
+      - flow_network
+    ports:
+      - 7233:7233
+    volumes:
+      - temporal_data:/var/lib/temporal
+    healthcheck:
+      test: [ "CMD", "tctl", "--address", "temporal:7233", "cluster", "health" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  temporal-ui:
+    container_name: flow_temporal_ui
+    depends_on:
+      - temporal
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+      - TEMPORAL_CORS_ORIGINS=http://localhost:3000
+    image: temporalio/ui:2.31.2
+    networks:
+      - flow_network
+    ports:
+      - 8080:8080
+
+volumes:
+  db_data:  # 业务数据持久化
+  temporal_data:  # Temporal 数据持久化
+
+networks:
+  flow_network:
+    driver: bridge

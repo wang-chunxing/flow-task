@@ -1,0 +1,7 @@
+persistence:
+  adapter: mysql
+  connection_string: "mysql://root:password@localhost/flow_task"
+
+scheduler:
+  adapter: apscheduler
+  timezone: Asia/Shanghai

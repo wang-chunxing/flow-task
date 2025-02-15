@@ -1,0 +1,20 @@
+{
+    "exclude": [
+        "**/.venv/**",
+        "**/venv/**"
+    ],
+    "groups": [
+        {
+            "type": "stdlib"
+        },
+        {
+            "type": "sitepackages"
+        },
+        {
+            "type": "remainder"
+        },
+        {
+            "type": "local"
+        }
+    ]
+}
