@@ -41,7 +41,7 @@ class WorkflowTranslator:
                 self._dependencies.setdefault(op_name, []).extend(op_deps)
                 self._dependencies[op_name] = list(set(self._dependencies[op_name]))
 
-        # 准备活动定义
+        # # 准备活动定义
         activities = []
         for layer in task.workflow.execution_layers:
             for op in layer:
@@ -120,6 +120,23 @@ class WorkflowTranslator:
         DynamicWorkflow.run = workflow.run(DynamicWorkflow.run)
 
         return DynamicWorkflow
+
+    def _process_dependencies(self, task: Task) -> Dict[str, List[str]]:
+        """处理跨阶段依赖关系"""
+        dependencies = {}
+        for stage in task.workflow.stages:
+            for op_name, deps in stage.dependencies.items():
+                dependencies.setdefault(op_name, []).extend(deps)
+                dependencies[op_name] = list(set(dependencies[op_name]))
+        return dependencies
+
+    def _create_activities(self, task: Task) -> List[Callable]:
+        """生成所有活动定义"""
+        activities = []
+        for layer in task.workflow.execution_layers:
+            for op in layer:
+                activities.append(self._create_activity(op))
+        return activities
 
     def _create_activity(self, operator: Operator) -> Callable:
         """动态生成Activity（修复类型判断逻辑）"""

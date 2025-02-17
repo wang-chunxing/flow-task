@@ -7,11 +7,10 @@ from temporalio.client import Client, WorkflowFailureError
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
-from app.models.models import Task, TaskStatus
+from app.models.models import Task
 from app.persistence import TaskStorage
 from app.scheduling.abstract import TaskScheduler
 from app.scheduling.adapters.temporal.workflow_registrar import WorkflowRegistrar
-from app.scheduling.adapters.temporal.workflow_translator import WorkflowTranslator
 from app.scheduling.concurrency import ConcurrencyController
 
 
@@ -22,16 +21,13 @@ class DynamicScheduler(TaskScheduler):
     def __init__(
             self,
             temporal_client: Client,
-            translator: WorkflowTranslator,
             controller: ConcurrencyController,
             task_repository: TaskStorage,
             base_retry_delay: float = 1.0,
     ):
         self.client = temporal_client
-        self.translator = translator
         self.controller = controller
         self.storage = task_repository
-        self.registrar = WorkflowRegistrar(temporal_client)
         self.base_retry_delay = base_retry_delay
         self.max_retries = 3
         self.retry_interval = 60
@@ -39,9 +35,9 @@ class DynamicScheduler(TaskScheduler):
 
     async def add_job(
             self,
-            task_id: uuid.UUID,
+            task_id: str,
             workflow: Any | None = None,
-            trigger_type: str = "immediate",
+            scheduler_type: str = "immediate",
             queue: str = "default",
             max_retries: int = 3,
             retry_interval: int = 60,
@@ -65,12 +61,12 @@ class DynamicScheduler(TaskScheduler):
     async def resume_job(self, job_id: str) -> bool:
         return True
 
-    async def schedule_task(self, task_id: uuid.UUID):
+    async def schedule_task(self, task_id: str):
         """智能任务调度入口，支持动态优先级"""
         task = await self._get_task_with_retry(task_id)
         await self._execute_with_adaptive_concurrency(task)
 
-    async def _get_task_with_retry(self, task_id: uuid.UUID) -> Task:
+    async def _get_task_with_retry(self, task_id: str) -> Task:
         """带重试机制的任务获取"""
         for _ in range(3):
             try:
@@ -102,20 +98,19 @@ class DynamicScheduler(TaskScheduler):
                     await asyncio.sleep(dynamic_delay)
             except Exception as e:
                 print(f"Failed to execute task {task_id}: {e}")
-        await self.storage.update_task_status(task_id, TaskStatus.PENDING)
+        await self.storage.update_task_status(task_id, "pending")
 
     async def _execute_workflow(self, task: Task):
         """执行工作流核心逻辑"""
-        workflow_cls = self.translator.translate(task)
-
-        await self.registrar.register(workflow_cls=workflow_cls)
-
+        registrar=self.registrar = WorkflowRegistrar(self.client, task)
+        await registrar.start_worker()
         try:
-            await self.client.start_workflow(
-                workflow=workflow_cls.run,  # type: ignore
-                args=[task.workflow.args],
-                id=str(task.id),
+            input_data=task.workflow.args
+            await self.client.execute_workflow(
+                "DynamicWorkflow",
+                args=[task, input_data],
                 task_queue=task.queue_name,
+                id=f"Workflow-{task.queue_name}-{task.id} ",
                 retry_policy=RetryPolicy(
                     maximum_attempts=self.max_retries,
                     initial_interval=timedelta(seconds=self.retry_interval)
@@ -135,8 +130,8 @@ class DynamicScheduler(TaskScheduler):
 
     async def recover_cluster_state(self):
         """集群状态恢复机制"""
-        wait_tasks = await self.storage.get_by_status([TaskStatus.PENDING, TaskStatus.TIMEOUT])
+        wait_tasks = await self.storage.get_by_status(["pending", "timeout"])
 
         for task in wait_tasks:
-            if task.status == TaskStatus.PENDING:
-                await self.controller.acquire_slot(task.queue_name, task.id)
+            await self.controller.acquire_slot(task.queue_name, task.id)
+

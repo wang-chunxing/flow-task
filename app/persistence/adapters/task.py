@@ -14,20 +14,16 @@ from sqlalchemy import (
     select,
     update as sql_update,
 )
-from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.models.models import (
     Operator,
-    ScheduleType,
     SchedulerPolicy,
     Stage,
     Task,
-    TaskStatus,
     Workflow,
 )
 from app.persistence.abstract import (
-    ConcurrencyError,
-    ConcurrentUpdate,
     TaskNotFound,
     TaskRepository,
 )
@@ -86,10 +82,9 @@ class TaskModel(BaseModel):
 
     # 状态管理
     status = Column(
-        Enum(TaskStatus, name='task_status'),
+        String(32),
         nullable=False,
-        default=TaskStatus.PENDING,
-        server_default=TaskStatus.PENDING.value,
+        default="pending",
         index=True,
         comment='任务状态'
     )
@@ -131,50 +126,63 @@ class TaskStorage(TaskRepository):
 
     async def save(self, task: Task) -> Task:
         async with self.session_factory() as session:
-            try:
-                model = self._convert_to_model(task)
-                # 使用明确的版本检查
-                result = await session.execute(
-                    select(TaskModel)
-                    .where(TaskModel.id == str(task.id))  # type: ignore
-                    .with_for_update()
-                )
-                existing = result.scalar_one_or_none()
+            model = self._convert_to_model(task)
+            session.add(model)
+            await session.commit()
+            return await self._convert_from_model(model)
 
-                if existing:
-                    if existing.version != task.version:
-                        raise ConcurrencyError(f"Task {task.id} version conflict")
-                    model.version += 1
-                    await session.merge(model)
-                else:
-                    session.add(model)
+            # try:
+            #     model = self._convert_to_model(task)
+            #
+            #     # 如果 task.id 为空，表示是新增任务
+            #     if not task.id:
+            #         session.add(model)
+            #         await session.commit()
+            #         return await self._convert_from_model(model)
+            #
+            #     # 如果 task.id 不为空，表示是更新任务
+            #     result = await session.execute(
+            #         select(TaskModel)
+            #         .where(TaskModel.id == str(task.id))
+            #         .with_for_update()
+            #     )
+            #     existing = result.scalar_one_or_none()
+            #
+            #     if existing:
+            #         if existing.version != task.version:
+            #             raise ConcurrencyError(f"Task {task.id} version conflict")
+            #         model.version += 1
+            #         await session.merge(model)
+            #     else:
+            #         # 如果任务不存在，则抛出异常
+            #         raise ValueError(f"Task with id {task.id} not found")
+            #
+            #     await session.commit()
+            #     return await self._convert_from_model(model)
+            # except IntegrityError as e:
+            #     await session.rollback()
+            #     raise ConcurrentUpdate("版本冲突或数据不一致") from e
+            # except SQLAlchemyError as e:
+            #     await session.rollback()
+            #     raise RuntimeError(f"数据库操作失败: {str(e)}") from e
 
-                await session.commit()
-                return await self._convert_from_model(model)
-            except IntegrityError as e:
-                await session.rollback()
-                raise ConcurrentUpdate("版本冲突或数据不一致") from e
-            except SQLAlchemyError as e:
-                await session.rollback()
-                raise RuntimeError(f"数据库操作失败: {str(e)}") from e
-
-    async def load(self, task_id: UUID) -> Task:
+    async def load(self, task_id: str) -> Task:
         async with self.session_factory() as session:
             result = await session.execute(
                 select(TaskModel)
-                .where(TaskModel.id == str(task_id))  # type: ignore
+                .where(TaskModel.id == task_id)  # type: ignore
             )
             model = result.scalar_one_or_none()
             return await self._convert_from_model(model)
 
-    async def update_task_status(self, task_id: UUID, new_status: TaskStatus,
-                                 expected_current: TaskStatus | None = None) -> bool:
+    async def update_task_status(self, task_id: str, new_status: str,
+                                 expected_current: str | None = None) -> bool:
         async with self.session_factory() as session:
             try:
                 # 使用统一查询方式
                 result = await session.execute(
                     select(TaskModel)
-                    .where(TaskModel.id == str(task_id))  # type: ignore
+                    .where(TaskModel.id == task_id)  # type: ignore
                     .with_for_update()
                 )
                 task_model = result.scalar_one_or_none()
@@ -182,15 +190,15 @@ class TaskStorage(TaskRepository):
                 if not task_model:
                     raise TaskNotFound(f"Task {task_id} not found")
 
-                if expected_current and TaskStatus(task_model.status) != expected_current:
+                if expected_current and task_model.status != expected_current:
                     return False
 
                 # 使用ORM更新方式
                 await session.execute(
                     sql_update(TaskModel)
-                    .where(TaskModel.id == str(task_id))  # type: ignore
+                    .where(TaskModel.id == task_id)  # type: ignore
                     .values(
-                        status=new_status.value,
+                        status=new_status,
                         version=TaskModel.version + 1,
                         updated_at=func.now()
                     )
@@ -209,19 +217,19 @@ class TaskStorage(TaskRepository):
                 .where(
                     and_(
                         TaskModel.queue_name == queue_name,  # type: ignore
-                        TaskModel.status == TaskStatus.RUNNING.value  # type: ignore
+                        TaskModel.status == "running"  # type: ignore
                     )
                 )
             )
             return result.scalar() or 0
 
-    async def get_retry_count(self, task_id: UUID) -> int:
+    async def get_retry_count(self, task_id: str) -> int:
         async with self.session_factory() as session:
             stmt = select(TaskModel.retries).where(TaskModel.id == task_id)  # type: ignore
             result = await session.scalars(stmt)
             return result.one_or_none() or 0
 
-    async def get_by_status(self, status: List[TaskStatus]) -> List[Task]:
+    async def get_by_status(self, status: List[str]) -> List[Task]:
         async with self.session_factory() as session:
             result = await session.execute(
                 select(TaskModel)
@@ -229,13 +237,13 @@ class TaskStorage(TaskRepository):
             )
             return [await self._convert_from_model(m) for m in result.scalars()]
 
-    async def record_retry_attempt(self, task_id: UUID, scheduled_time: datetime):
+    async def record_retry_attempt(self, task_id: str, scheduled_time: datetime):
         async with self.session_factory() as session:
             try:
                 # 使用ORM更新方式
                 await session.execute(
                     sql_update(TaskModel)
-                    .where(TaskModel.id == str(task_id))  # type: ignore
+                    .where(TaskModel.id == task_id)  # type: ignore
                     .values(
                         retries=TaskModel.retries + 1,
                         scheduler_config=func.jsonb_set(
@@ -260,7 +268,6 @@ class TaskStorage(TaskRepository):
 
         """转换业务对象到持久化模型"""
         return TaskModel(
-            id=str(task.id),
             name=task.name,
             scheduler_type=task.scheduler_config.scheduler_type,
             scheduler_config=scheduler_config_dict,
@@ -269,24 +276,22 @@ class TaskStorage(TaskRepository):
             version=task.version,
             # 下面两个实现有问题，先忽略
             # success_handlers=self._serialize_handlers(task.success_handlers),
-            # failure_handlers=self._serialize_handlers(task.failure_handlers),
-            created_at=task.created_at,
-            updated_at=task.updated_at
+            # failure_handlers=self._serialize_handlers(task.failure_handlers)
         )
 
     async def _convert_from_model(self, model: TaskModel) -> Task:
         """数据库模型转领域对象"""
         return Task(
-            id=UUID(model.id),
+            id=model.id,
             name=model.name,
-            scheduler_type=ScheduleType(model.scheduler_type),
+            scheduler_type=model.scheduler_type,
             scheduler_config=SchedulerPolicy(
                 scheduler_type=model.scheduler_type,
                 timeout=model.scheduler_config["timeout"],
                 retry_interval=model.scheduler_config["retry_interval"],
                 max_retries=model.scheduler_config.get("max_retries",3),
                 cron_expression=model.scheduler_config["cron_expression"]
-                    if "cron_expression" in model.scheduler_config else None
+                    if "cron_expression" in model.scheduler_config else ""
             ),
             queue_name=model.queue_name,
             workflow=await self._deserialize_workflow(model.workflow_definition),
@@ -295,7 +300,7 @@ class TaskStorage(TaskRepository):
             failure_handlers=await self._deserialize_handlers(model.failure_handlers),  # type: ignore
             created_at=model.created_at,  # type: ignore
             updated_at=model.updated_at,  # type: ignore
-            status=TaskStatus(model.status)
+            status=model.status
         )
 
     def _serialize_workflow(self, workflow: Workflow) -> dict:

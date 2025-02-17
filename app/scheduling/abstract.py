@@ -7,9 +7,9 @@ class TaskScheduler(ABC):
     @abstractmethod
     async def add_job(
         self,
-        task_id: uuid.UUID,
+        task_id: str,
         workflow: Any | None = None,
-        trigger_type: str = "immediate",
+        scheduler_type: str = "immediate",
         queue: str = "default",
         max_retries: int = 0,
         retry_interval: int = 60,

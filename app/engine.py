@@ -1,6 +1,7 @@
+import uuid
 from uuid import UUID
 
-from app.models.models import Task, TaskStatus
+from app.models.models import Task
 from app.persistence.adapters import TaskStorage
 from app.scheduling.abstract import TaskScheduler
 
@@ -15,11 +16,10 @@ class TaskEngine:
         self.scheduler = task_scheduler
 
     async def submit_task(self, task: Task) -> Task:
-
-        saved_task = await self.repository.save(task)  # 添加await
+        saved_task = await self.repository.save(task)
 
         # 提交到调度系统
-        await self.scheduler.add_job(  # 假设调度器也需异步操作
+        await self.scheduler.add_job(
             task_id=saved_task.id,
             workflow=saved_task.workflow,
             trigger_type=task.scheduler_config.scheduler_type,
@@ -41,7 +41,7 @@ class TaskEngine:
 
         # 获取并更新任务
         if task := await self.repository.load(task_id):
-            task.status = TaskStatus.CANCELLED
+            task.status = "cancelled"
             await self.repository.save(task)
             return True
         return False
@@ -50,7 +50,7 @@ class TaskEngine:
         """暂停任务调度"""
         await self.scheduler.pause_job(str(task_id))
         if task := await self.repository.load(task_id):
-            task.status = TaskStatus.PAUSED
+            task.status = "paused"
             await self.repository.save(task)
             return True
         return False
@@ -59,7 +59,7 @@ class TaskEngine:
         """恢复任务调度"""
         await self.scheduler.resume_job(str(task_id))
         if task := await self.repository.load(task_id):
-            task.status = TaskStatus.PENDING
+            task.status = "pending"
             await self.repository.save(task)
             return True
         return False

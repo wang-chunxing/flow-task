@@ -71,8 +71,6 @@ class OperatorStorage(OperatorRepository):
         self.session_factory = session_factory
 
     async def save(self, operator: Operator) -> Operator:
-        if not operator.id:
-            operator.id = uuid.uuid4()
         if not operator.version:
             operator.version = 1
 
@@ -124,7 +122,6 @@ class OperatorStorage(OperatorRepository):
                 else:
 
                     new_model = OperatorModel(
-                        id=str(operator.id),
                         name=operator.name,
                         operator_type=operator.operator_type,
                         spec=operator.spec,

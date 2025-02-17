@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from app.models.models import DAG, Operator, Stage, Workflow
 
@@ -9,7 +9,7 @@ class WorkflowBuilder:
         self.name: str = ""
         self.stages: dict[str, Stage] = {}
         self.global_dag = DAG()
-        self._current_stage: Stage | None = None
+        self._current_stage: Optional[Stage] = None
 
     def __call__(self, name: str) -> 'WorkflowBuilder':
         """创建工作流"""
@@ -20,15 +20,15 @@ class WorkflowBuilder:
         """开始定义新阶段"""
         if name in self.stages:
             raise ValueError(f"Stage {name} already exists")
-        self._current_stage = Stage(name, description)
+        self._current_stage = Stage(name=name, description=description)
         self.stages[name] = self._current_stage
         return self
 
-    def add_operator(self, operator: 'Operator', depends_on: List[str] | None = None, sync_policy: dict | None = None):
+    def add_operator(self, operator: 'Operator', depends_on: List[str] | None = None):
         """向当前阶段添加算子"""
         if not self._current_stage:
             raise RuntimeError("No active stage, create stage first")
-        self._current_stage.add_operator(operator, depends_on, sync_policy)
+        self._current_stage.add_operator(operator, depends_on)
 
         # 更新全局DAG
         self.global_dag.add_node(operator.name)

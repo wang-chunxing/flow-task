@@ -3,8 +3,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from app.builders import TaskBuilder, WorkflowBuilder
 from app.core.containers.container import Container
-from app.models.enum import ScheduleType
-from app.models.models import TaskQueue
+from app.models.models import Queue
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +63,6 @@ class AsyncUploadOperator:
             .add_operator(
                 registry.get_operator("async_split"),
                 depends_on=["async_parser"],
-                sync_policy={"mode": "wait"}
             )
         )
 
@@ -75,12 +73,12 @@ class AsyncUploadOperator:
 
         upload_task = (
             TaskBuilder("arg_doc_upload")
-            .set_scheduler(ScheduleType.IMMEDIATE, {
+            .set_scheduler("immediate",{
                 'timeout': 300,
                 'retry_interval': 100,
                 'max_retries': 3
             })
-            .set_queue(TaskQueue(
+            .set_queue(Queue(
                 max_concurrency=1,
                 queue_name="default",
                 user_concurrency={"default": 1}

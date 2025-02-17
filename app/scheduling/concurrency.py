@@ -3,7 +3,6 @@ import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta
 
-from app.models.models import TaskStatus
 from app.persistence.adapters import TaskStorage
 from app.persistence.adapters.my_queue import QueueStorage
 
@@ -39,7 +38,7 @@ class ConcurrencyController:
 
     async def _acquire_immediate(self, task_id: uuid.UUID):
         """立即获取槽位"""
-        await self.task.update_task_status(task_id, TaskStatus.RUNNING)
+        await self.task.update_task_status(task_id, "running")
 
     async def _retry_acquire(self, queue_name: str, task_id: uuid.UUID) -> bool:
         """重试获取槽位"""
@@ -55,7 +54,7 @@ class ConcurrencyController:
     async def release_slot(self, queue_name: str, task_id: uuid.UUID):
         """释放槽位并唤醒等待任务"""
         async with self.locks[queue_name]:
-            await self.task.update_task_status(task_id, TaskStatus.RELEASED)
+            await self.task.update_task_status(task_id, "released")
 
             # 唤醒下一个等待任务
             if self.pending_tasks[queue_name]:
@@ -64,7 +63,7 @@ class ConcurrencyController:
 
     async def _handle_timeout(self, queue_name: str, task_id: uuid.UUID):
         """处理获取超时"""
-        await self.task.update_task_status(task_id, TaskStatus.TIMEOUT)
+        await self.task.update_task_status(task_id, "timeout")
         self.pending_tasks[queue_name].discard(task_id)
         await self._schedule_retry(task_id)
 

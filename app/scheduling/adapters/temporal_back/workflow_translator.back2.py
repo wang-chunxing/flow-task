@@ -164,7 +164,7 @@ class WorkflowTranslator:
         self._activity_cache[activity_name] = activity_def
         return activity_def
 
-    def _create_function_activity(self, operator: Operator, name: str) -> Callable:
+    def _create_function_activity(self, operator: FunctionOperator, name: str) -> Callable:
         """生成函数型Activity（修复模块加载）"""
 
         @activity.defn(name=name)
@@ -186,7 +186,7 @@ class WorkflowTranslator:
         setattr(_activity_wrapper, '__temporal_activity_definition__', {'name': name})
         return _activity_wrapper
 
-    def _create_api_activity(self, operator: Operator, name: str) -> Callable:
+    def _create_api_activity(self, operator: APIOperator, name: str) -> Callable:
         """修复后的API型Activity"""
 
         @activity.defn(name=name)
