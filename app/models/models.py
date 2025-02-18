@@ -167,7 +167,6 @@ class FunctionOperator(Operator):
             logger.error(f"Function operator failed: {e}", exc_info=True)
             raise
 
-
 class APIOperator(Operator):
     def __init__(self, spec: dict, name: str):
         super().__init__(

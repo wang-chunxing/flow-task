@@ -306,6 +306,7 @@ class TaskStorage(TaskRepository):
     def _serialize_workflow(self, workflow: Workflow) -> dict:
         """序列化保持Stage对象结构"""
         return {
+            "name": workflow.name,
             "stages": [
                 {
                     "name": stage.name,
@@ -318,7 +319,8 @@ class TaskStorage(TaskRepository):
             "execution_layers": [
                 [op.name for op in layer]
                 for layer in workflow.execution_layers
-            ]
+            ],
+            "args": workflow.args
         }
 
     def _serialize_operator(self, operator: Operator) -> dict:
@@ -340,6 +342,10 @@ class TaskStorage(TaskRepository):
 
     async def _deserialize_workflow(self, data: dict) -> Workflow:
         """反序列化重建Stage对象"""
+        # 从数据中提取工作流名称和参数
+        workflow_name = data.get("name", "")
+        workflow_args = data.get("args", {})
+
         # 先加载所有算子
         all_operators = {}
         for stage_data in data["stages"]:
@@ -367,9 +373,10 @@ class TaskStorage(TaskRepository):
             execution_layers.append(layer)
 
         return Workflow(
-            name="",
+            name=workflow_name,
             stages=stages,
-            execution_layers=execution_layers
+            execution_layers=execution_layers,
+            args=workflow_args
         )
 
     async def _deserialize_operator(self, data: dict) -> Operator:

@@ -7,7 +7,7 @@ from temporalio.client import Client, WorkflowFailureError
 from temporalio.common import RetryPolicy
 from temporalio.exceptions import WorkflowAlreadyStartedError
 
-from app.models.models import Task
+from app.models.models import Task, Workflow
 from app.persistence import TaskStorage
 from app.scheduling.abstract import TaskScheduler
 from app.scheduling.adapters.temporal.workflow_registrar import WorkflowRegistrar
@@ -36,7 +36,7 @@ class DynamicScheduler(TaskScheduler):
     async def add_job(
             self,
             task_id: str,
-            workflow: Any | None = None,
+            workflow: Workflow | None = None,
             scheduler_type: str = "immediate",
             queue: str = "default",
             max_retries: int = 3,
@@ -110,7 +110,7 @@ class DynamicScheduler(TaskScheduler):
                 "DynamicWorkflow",
                 args=[task, input_data],
                 task_queue=task.queue_name,
-                id=f"Workflow-{task.queue_name}-{task.id} ",
+                id=f"Workflow-{task.workflow.name}-{task.id} ",
                 retry_policy=RetryPolicy(
                     maximum_attempts=self.max_retries,
                     initial_interval=timedelta(seconds=self.retry_interval)
@@ -123,6 +123,8 @@ class DynamicScheduler(TaskScheduler):
         except WorkflowFailureError as e:
             print(f"Workflow {task.id} failed: {e}")
             raise
+        finally:
+            await registrar.shutdown()
 
     def _calculate_backoff(self, current_delay: float) -> float:
         """计算自适应退避时间"""

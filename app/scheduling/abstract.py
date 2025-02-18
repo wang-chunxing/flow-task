@@ -2,13 +2,15 @@ import uuid
 from abc import ABC, abstractmethod
 from typing import Any
 
+from app.models.models import Workflow
+
 
 class TaskScheduler(ABC):
     @abstractmethod
     async def add_job(
         self,
         task_id: str,
-        workflow: Any | None = None,
+        workflow: Workflow | None = None,
         scheduler_type: str = "immediate",
         queue: str = "default",
         max_retries: int = 0,

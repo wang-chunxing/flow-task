@@ -10,10 +10,18 @@ class WorkflowBuilder:
         self.stages: dict[str, Stage] = {}
         self.global_dag = DAG()
         self._current_stage: Optional[Stage] = None
+        self.args: dict = {}  # 初始化 args 字典
 
     def __call__(self, name: str) -> 'WorkflowBuilder':
         """创建工作流"""
         self.name = name
+        return self
+
+    def set_args(self, args: dict) -> 'WorkflowBuilder':
+        """设置工作流的参数"""
+        if not isinstance(args, dict):
+            raise TypeError("Arguments must be a dictionary")
+        self.args = args
         return self
 
     def stage(self, name: str, description: str | None = "") -> 'WorkflowBuilder':
@@ -69,7 +77,8 @@ class WorkflowBuilder:
         return Workflow(
             name=self.name,
             stages=list(self.stages.values()),
-            execution_layers=execution_layers
+            execution_layers=execution_layers,
+            args = self.args
         )
 
     @staticmethod

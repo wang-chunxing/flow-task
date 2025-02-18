@@ -1,11 +1,7 @@
 import asyncio
-import inspect
-import signal
-from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from typing import Any, Callable, Dict, Type
-
+import logging
 from temporalio.client import Client
 from temporalio.worker import Worker
 
@@ -56,6 +52,9 @@ class WorkflowRegistrar:
 
         workflow_instance = DynamicWorkflow()
         workflow_instance.task = self.task
+        workflow_instance.load_activities()
+        workflow_instance.load_dependencies()
+
         worker = Worker(
             self.client,
             task_queue=self.task.queue_name ,
